@@ -26,7 +26,7 @@ function toast(m,t=''){const e=document.createElement('div');e.className='toast 
  e.innerHTML=`<div class="d-flex"><div class="toast-body"></div><button class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Tutup"></button></div>`;$('.toast-body',e).textContent=m;
  $('#toasts').append(e);e.addEventListener('hidden.bs.toast',()=>e.remove());new bootstrap.Toast(e,{delay:3800}).show()}
 function dialog(title,body,cls=''){const dr=cls==='drw',k=dr?'offcanvas':'modal',d=document.createElement('div');d.tabIndex=-1;
- d.className=dr?'offcanvas offcanvas-end':'modal fade';
+ d.className=(dr?'offcanvas offcanvas-end':'modal fade')+' ovr';
  d.innerHTML=dr?`<div class="offcanvas-header"><h3 class="offcanvas-title">${title}</h3><button class="btn-close" data-bs-dismiss="offcanvas" aria-label="Tutup"></button></div><div class="offcanvas-body bd">${body}</div>`
  :`<div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h3 class="modal-title">${title}</h3><button class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button></div><div class="modal-body bd">${body}</div></div></div>`;
  document.body.append(d);const i=dr?new bootstrap.Offcanvas(d):new bootstrap.Modal(d);
