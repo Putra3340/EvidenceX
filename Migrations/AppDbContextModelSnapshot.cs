@@ -15,7 +15,7 @@ partial class AppDbContextModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261113120515_UpdateSQLITE";
+    public override string LastMigrationId => "20261114151009_DateTimeOffsetAsText";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -49,7 +49,7 @@ partial class AppDbContextModelSnapshot : ModelSnapshot
                 b.Property<bool>("LockoutEnabled")
                     .HasColumnType("INTEGER");
 
-                b.Property<DateTimeOffset?>("LockoutEnd")
+                b.Property<string>("LockoutEnd")
                     .HasColumnType("TEXT");
 
                 b.Property<string>("NormalizedEmail")
@@ -116,7 +116,8 @@ partial class AppDbContextModelSnapshot : ModelSnapshot
                     .IsRequired()
                     .HasColumnType("TEXT");
 
-                b.Property<DateTimeOffset>("OccurredAt")
+                b.Property<string>("OccurredAt")
+                    .IsRequired()
                     .HasColumnType("TEXT");
 
                 b.Property<string>("PayloadJson")
@@ -151,7 +152,8 @@ partial class AppDbContextModelSnapshot : ModelSnapshot
                     .IsRequired()
                     .HasColumnType("TEXT");
 
-                b.Property<DateTimeOffset>("CreatedAt")
+                b.Property<string>("CreatedAt")
+                    .IsRequired()
                     .HasColumnType("TEXT");
 
                 b.Property<Guid>("CreatedById")
@@ -196,10 +198,11 @@ partial class AppDbContextModelSnapshot : ModelSnapshot
                     .IsRequired()
                     .HasColumnType("TEXT");
 
-                b.Property<DateTimeOffset>("RequestedAt")
+                b.Property<string>("RequestedAt")
+                    .IsRequired()
                     .HasColumnType("TEXT");
 
-                b.Property<DateTimeOffset?>("RespondedAt")
+                b.Property<string>("RespondedAt")
                     .HasColumnType("TEXT");
 
                 b.Property<int>("Status")
@@ -246,7 +249,8 @@ partial class AppDbContextModelSnapshot : ModelSnapshot
                     .IsRequired()
                     .HasColumnType("TEXT");
 
-                b.Property<DateTimeOffset>("RegisteredAt")
+                b.Property<string>("RegisteredAt")
+                    .IsRequired()
                     .HasColumnType("TEXT");
 
                 b.Property<Guid>("RegisteredById")
@@ -284,7 +288,8 @@ partial class AppDbContextModelSnapshot : ModelSnapshot
                 b.Property<string>("ActualHash")
                     .HasColumnType("TEXT");
 
-                b.Property<DateTimeOffset>("CheckedAt")
+                b.Property<string>("CheckedAt")
+                    .IsRequired()
                     .HasColumnType("TEXT");
 
                 b.Property<Guid?>("CheckedById")
