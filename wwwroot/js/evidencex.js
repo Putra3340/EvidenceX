@@ -61,15 +61,23 @@ function authView(){
    const r=await api('/auth/login',{method:'POST',json:{email:d.e,password:d.p},anon:1});setToken(r.accessToken)}
   catch(x){$('.err',f).textContent=x.message;f.classList.remove('shake');void f.offsetWidth;f.classList.add('shake');b.disabled=false}}}
 function setToken(t){S.token=t;sessionStorage.setItem('ex_t',t);S.user=parse(t);boot()}
-function logout(){S.token=S.user=null;sessionStorage.removeItem('ex_t');authView()}
+function logout(){S.token=S.user=null;sessionStorage.removeItem('ex_t');$$('.offcanvas-backdrop').forEach(b=>b.remove());document.body.classList.remove('offcanvas-open');document.body.style.removeProperty('overflow');document.body.style.removeProperty('padding-right');authView()}
 function boot(){S.user=S.token&&parse(S.token);S.user&&S.user.exp*1000>Date.now()?shell():(S.token&&sessionStorage.removeItem('ex_t'),S.token=null,authView())}
 
 /* ---------- kerangka aplikasi ---------- */
 function shell(){
  const adm=S.user.roles.some(r=>/^(Administrator|Auditor)$/.test(r));
  const nav=[['ringkasan','Ringkasan'],['kasus','Kasus'],['bukti','Barang bukti'],['serah','Serah terima'],...(adm?[['audit','Jejak audit']]:[])];
- root.innerHTML=`<div class="app"><aside><div class="logo">Evidence<b>X</b></div><nav>${nav.map(([k,l])=>`<a href="#/${k}" data-k="${k}">${l}</a>`).join('')}<i class="ind"></i></nav>
- <div class="me"><div>${esc(S.user.email)}</div><div>${esc(S.user.roles.join(', '))}</div><button class="btn btn-outline-dark" data-act="copyid">Salin ID saya</button><button class="btn btn-outline-dark" data-act="out">Keluar</button></div></aside><main id="v"></main></div>`;
+ const links=nav.map(([k,l])=>`<a href="#/${k}" data-k="${k}">${l}</a>`).join('');
+ const dlinks=nav.map(([k,l])=>`<a href="#/${k}" data-k="${k}" data-bs-dismiss="offcanvas">${l}</a>`).join('');
+ const me=`<div>${esc(S.user.email)}</div><div>${esc(S.user.roles.join(', '))}</div><button class="btn btn-outline-dark" data-act="copyid">Salin ID saya</button><button class="btn btn-outline-dark" data-act="out">Keluar</button>`;
+ root.innerHTML=`<div class="app"><aside><div class="logo">Evidence<b>X</b></div><nav>${links}<i class="ind"></i></nav>
+ <div class="me">${me}</div></aside>
+ <header class="mtop"><div class="logo">Evidence<b>X</b></div><button class="burger" type="button" data-bs-toggle="offcanvas" data-bs-target="#mnav" aria-controls="mnav" aria-label="Buka menu navigasi"><span></span><span></span></button></header>
+ <div class="offcanvas offcanvas-end mnav" tabindex="-1" id="mnav" aria-labelledby="mnavT"><div class="offcanvas-header"><div class="logo" id="mnavT">Evidence<b>X</b></div><button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Tutup menu"></button></div><div class="offcanvas-body"><nav>${dlinks}</nav><div class="me">${me}</div></div></div>
+ <main id="v"></main></div>`;
+ const mn=$('#mnav'),bg=$('.burger');
+ if(mn&&bg){mn.addEventListener('show.bs.offcanvas',()=>bg.classList.add('is-open'));mn.addEventListener('hide.bs.offcanvas',()=>bg.classList.remove('is-open'))}
  route()}
 const V={};
 async function route(){
