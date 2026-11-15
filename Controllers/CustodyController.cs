@@ -32,9 +32,11 @@ public sealed class CustodyController(AppDbContext db, IAuditWriter audit) : Con
             Purpose = r.Purpose.Trim(),
             Notes = r.Notes
         };
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
         db.CustodyTransfers.Add(transfer); await db.SaveChangesAsync(ct);
         await audit.WriteAsync(UserId, "TransferRequested", "CustodyTransfer", transfer.Id.ToString(),
             new { evidenceId, r.ToUserId, r.Purpose }, ct);
+        await tx.CommitAsync(ct);
         return Created($"/api/transfers/{transfer.Id}", transfer);
     }
 
@@ -48,6 +50,7 @@ public sealed class CustodyController(AppDbContext db, IAuditWriter audit) : Con
         if (t.Status != TransferStatus.Pending) return Conflict("Transfer is not pending.");
         var e = await db.Evidence.FirstOrDefaultAsync(x => x.Id == t.EvidenceId, ct);
         if (e is null) return NotFound("Evidence not found.");
+        if (e.IsArchived) return Conflict("Evidence is archived; custody cannot change.");
         if (e.CurrentCustodianId != t.FromUserId) return Conflict("Custodian changed since request.");
         t.Status = TransferStatus.Accepted; t.RespondedAt = DateTimeOffset.UtcNow;
         e.CurrentCustodianId = UserId;
@@ -66,8 +69,10 @@ public sealed class CustodyController(AppDbContext db, IAuditWriter audit) : Con
         if (t.ToUserId != UserId) return Forbid();
         if (t.Status != TransferStatus.Pending) return Conflict("Transfer is not pending.");
         t.Status = TransferStatus.Rejected; t.RespondedAt = DateTimeOffset.UtcNow;
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
         await db.SaveChangesAsync(ct);
         await audit.WriteAsync(UserId, "TransferRejected", "CustodyTransfer", id.ToString(), new { }, ct);
+        await tx.CommitAsync(ct);
         return Ok(t);
     }
 

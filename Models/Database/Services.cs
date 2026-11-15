@@ -1,4 +1,5 @@
 using EvidenceX.Domain;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Cryptography;
 using System.Text;
@@ -64,36 +65,54 @@ public sealed class AuditWriter(AppDbContext db) : IAuditWriter
     public async Task WriteAsync(Guid? actorId, string eventType, string entityType,
         string entityId, object payload, CancellationToken ct)
     {
-        var ownsTransaction = db.Database.CurrentTransaction is null;
-        // Serialize writes through a transaction/advisory lock in production.
-        await using var tx = await db.Database.BeginTransactionAsync(ct);
-        await db.Database.ExecuteSqlRawAsync(
-            "LOCK TABLE \"AuditEvents\" IN EXCLUSIVE MODE", ct);
-
-        var previous = await db.AuditEvents.OrderByDescending(x => x.SequenceNumber)
-            .FirstOrDefaultAsync(ct);
-        var sequence = (previous?.SequenceNumber ?? 0) + 1;
-        var occurred = DateTimeOffset.UtcNow;
         var json = JsonSerializer.Serialize(payload);
-        var previousHash = previous?.EventHash ?? new string('0', 64);
-        var canonical = $"{sequence}|{actorId}|{eventType}|{entityType}|{entityId}|{occurred:O}|{previousHash}|{json}";
-        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)))
-            .ToLowerInvariant();
-
-        db.AuditEvents.Add(new AuditEvent
+        // Join the caller's transaction when there is one (row + audit event
+        // commit atomically); otherwise start one here.
+        var ownsTransaction = db.Database.CurrentTransaction is null;
+        await using var tx = ownsTransaction
+            ? await db.Database.BeginTransactionAsync(ct)
+            : null;
+        for (var attempt = 1; ; attempt++)
         {
-            SequenceNumber = sequence,
-            ActorId = actorId,
-            EventType = eventType,
-            EntityType = entityType,
-            EntityId = entityId,
-            OccurredAt = occurred,
-            PayloadJson = json,
-            PreviousEventHash = previousHash,
-            EventHash = hash
-        });
-        await db.SaveChangesAsync(ct);
-        if (ownsTransaction)
-            await tx!.CommitAsync(ct);
+            var previous = await db.AuditEvents.AsNoTracking()
+                .OrderByDescending(x => x.SequenceNumber).FirstOrDefaultAsync(ct);
+            var sequence = (previous?.SequenceNumber ?? 0) + 1;
+            var occurred = DateTimeOffset.UtcNow;
+            var previousHash = previous?.EventHash ?? new string('0', 64);
+            var canonical = $"{sequence}|{actorId}|{eventType}|{entityType}|{entityId}|{occurred:O}|{previousHash}|{json}";
+            var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)))
+                .ToLowerInvariant();
+            var auditEvent = new AuditEvent
+            {
+                SequenceNumber = sequence,
+                ActorId = actorId,
+                EventType = eventType,
+                EntityType = entityType,
+                EntityId = entityId,
+                OccurredAt = occurred,
+                PayloadJson = json,
+                PreviousEventHash = previousHash,
+                EventHash = hash
+            };
+
+            try
+            {
+                db.AuditEvents.Add(auditEvent);
+                // EF saves through the active transaction, creating an
+                // automatic savepoint so a later failure in the caller's
+                // transaction cannot leave a half-written audit event.
+                await db.SaveChangesAsync(ct);
+                if (tx is not null)
+                    await tx.CommitAsync(ct);
+                return;
+            }
+            catch (DbUpdateException ex) when (attempt <= 3 &&
+                ex.InnerException is SqliteException { SqliteErrorCode: 5 or 19 })
+            {
+                // SQLITE_BUSY (5) or a constraint failure (19): another writer
+                // claimed the sequence meanwhile — recompute from the new head.
+                db.Entry(auditEvent).State = EntityState.Detached;
+            }
+        }
     }
 }

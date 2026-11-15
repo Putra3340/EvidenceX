@@ -22,37 +22,42 @@ public sealed class EvidenceController(
         if (!await db.Cases.AnyAsync(x => x.Id == caseId, ct)) return NotFound("Case not found.");
 
         await using var input = file.OpenReadStream();
-        var key = await storage.SaveAsync(input, Path.GetFileName(file.FileName), ct);
-        string hash;
+        var key = "";
         try
         {
-            await using var stored = await storage.OpenReadAsync(key, ct);
-            hash = await hasher.Sha256Async(stored, ct);
+            // Evidence row, hash and audit event commit together or not at
+            // all; the stored file is removed when the transaction fails.
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            key = await storage.SaveAsync(input, Path.GetFileName(file.FileName), ct);
+            string hash;
+            await using (var stored = await storage.OpenReadAsync(key, ct))
+                hash = await hasher.Sha256Async(stored, ct);
+
+            var evidence = new Evidence
+            {
+                EvidenceCode = $"EV-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid():N}"[..31],
+                CaseId = caseId,
+                OriginalFileName = Path.GetFileName(file.FileName),
+                StoredFileName = Path.GetFileName(key),
+                StorageKey = key,
+                ContentType = string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType,
+                SizeBytes = file.Length,
+                OriginalSha256 = hash,
+                RegisteredById = UserId,
+                CurrentCustodianId = UserId
+            };
+            db.Evidence.Add(evidence);
+            await db.SaveChangesAsync(ct);
+            await audit.WriteAsync(UserId, "EvidenceRegistered", "Evidence", evidence.Id.ToString(),
+                new { evidence.EvidenceCode, evidence.OriginalSha256, evidence.SizeBytes }, ct);
+            await tx.CommitAsync(ct);
+            return CreatedAtAction(nameof(Get), new { id = evidence.Id }, ToDto(evidence));
         }
         catch
         {
-            await storage.DeleteAsync(key, ct);
+            if (key.Length > 0) await storage.DeleteAsync(key, ct);
             throw;
         }
-
-        var evidence = new Evidence
-        {
-            EvidenceCode = $"EV-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid():N}"[..31],
-            CaseId = caseId,
-            OriginalFileName = Path.GetFileName(file.FileName),
-            StoredFileName = Path.GetFileName(key),
-            StorageKey = key,
-            ContentType = string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType,
-            SizeBytes = file.Length,
-            OriginalSha256 = hash,
-            RegisteredById = UserId,
-            CurrentCustodianId = UserId
-        };
-        db.Evidence.Add(evidence);
-        await db.SaveChangesAsync(ct);
-        await audit.WriteAsync(UserId, "EvidenceRegistered", "Evidence", evidence.Id.ToString(),
-            new { evidence.EvidenceCode, evidence.OriginalSha256, evidence.SizeBytes }, ct);
-        return CreatedAtAction(nameof(Get), new { id = evidence.Id }, ToDto(evidence));
     }
 
     [HttpGet]
@@ -92,8 +97,10 @@ public sealed class EvidenceController(
         var e = await db.Evidence.FirstOrDefaultAsync(x => x.Id == id, ct);
         if (e is null) return NotFound();
         e.IsArchived = true;
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
         await db.SaveChangesAsync(ct);
         await audit.WriteAsync(UserId, "EvidenceArchived", "Evidence", id.ToString(), new { }, ct);
+        await tx.CommitAsync(ct);
         return NoContent();
     }
 
